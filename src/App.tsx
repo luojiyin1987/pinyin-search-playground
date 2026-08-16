@@ -6,12 +6,13 @@ import {
   serializeDataset,
 } from "./dataset";
 import "./dataset.css";
+import "./diagnostics.css";
 import {
   defaultFuzzyRuleIds,
   fuzzyRuleDefinitions,
   type FuzzyRuleId,
 } from "./fuzzy";
-import { rankResults } from "./ranking";
+import { rankResults, type ScoreBreakdown } from "./ranking";
 import { findMatch, type SearchMode } from "./search";
 
 const defaultDatasetText = serializeDataset(sampleTerms);
@@ -28,6 +29,19 @@ const searchModeOptions: Array<{
   { value: "any", label: "任意", description: "更宽松匹配" },
 ];
 
+const scoreParts: Array<{
+  key: keyof ScoreBreakdown;
+  label: string;
+}> = [
+  { key: "mode", label: "匹配模式" },
+  { key: "fuzzy", label: "模糊音" },
+  { key: "start", label: "起始位置" },
+  { key: "continuous", label: "连续命中" },
+  { key: "coverage", label: "命中字符" },
+  { key: "span", label: "命中跨度" },
+  { key: "length", label: "文本长度" },
+];
+
 function readStoredDataset() {
   if (typeof window === "undefined") return defaultDatasetText;
 
@@ -36,6 +50,10 @@ function readStoredDataset() {
   } catch {
     return defaultDatasetText;
   }
+}
+
+function formatScorePart(value: number) {
+  return value > 0 ? `+${value}` : String(value);
 }
 
 function HighlightedText({ text, indexes }: { text: string; indexes: number[] }) {
@@ -116,13 +134,15 @@ export default function App() {
     fuzzyRules,
   ]);
 
+  const normalizedQuery = query.trim();
+
   return (
     <main className="app-shell">
       <section className="hero">
         <div className="eyebrow">pinyin-pro · match()</div>
         <h1>中文拼音搜索 Playground</h1>
         <p>
-          输入拼音、首字母或缩写，实时查看匹配结果、命中字符、匹配模式和模糊音改写。
+          输入拼音、首字母或缩写，实时查看匹配结果、命中字符、匹配模式、模糊音改写和评分明细。
         </p>
       </section>
 
@@ -283,40 +303,76 @@ export default function App() {
           <span className="result-count">{results.length} 条</span>
         </div>
 
-        {query.trim() && results.length > 0 ? (
+        {normalizedQuery && results.length > 0 ? (
           <div className="result-list">
             {results.map(
               ({
                 text,
                 indexes,
                 score,
+                diagnostics,
                 matchMode,
                 matchedQuery,
                 fuzzyRules: matchedFuzzyRules,
                 fuzzyDistance,
               }) => (
                 <article className="result-card" key={text}>
-                  <HighlightedText text={text} indexes={indexes} />
-                  <div className="result-meta">
-                    {matchMode ? (
-                      <>
-                        <span>mode</span>
-                        <code>{matchMode}</code>
-                      </>
-                    ) : null}
-                    {fuzzyDistance ? (
-                      <>
-                        <span>fuzzy</span>
-                        <code>{matchedFuzzyRules?.join(" · ")}</code>
-                        <span>query</span>
-                        <code>{matchedQuery}</code>
-                      </>
-                    ) : null}
-                    <span>score</span>
-                    <code>{score}</code>
-                    <span>indexes</span>
-                    <code>[{indexes.join(", ")}]</code>
+                  <div className="result-summary">
+                    <HighlightedText text={text} indexes={indexes} />
+                    <div className="result-meta">
+                      {matchMode ? (
+                        <>
+                          <span>mode</span>
+                          <code>{matchMode}</code>
+                        </>
+                      ) : null}
+                      {fuzzyDistance ? (
+                        <>
+                          <span>fuzzy</span>
+                          <code>{matchedFuzzyRules?.join(" · ")}</code>
+                          <span>query</span>
+                          <code>{matchedQuery}</code>
+                        </>
+                      ) : null}
+                      <span>score</span>
+                      <code>{score}</code>
+                      <span>indexes</span>
+                      <code>[{indexes.join(", ")}]</code>
+                    </div>
                   </div>
+
+                  <details className="diagnostics">
+                    <summary>查看评分明细</summary>
+                    <div className="diagnostics-context">
+                      <span>输入 query</span>
+                      <code>{normalizedQuery}</code>
+                      <span>实际匹配</span>
+                      <code>{matchedQuery ?? normalizedQuery}</code>
+                      <span>匹配模式</span>
+                      <code>{matchMode ?? "—"}</code>
+                      <span>命中 indexes</span>
+                      <code>[{indexes.join(", ")}]</code>
+                      <span>模糊音规则</span>
+                      <code>
+                        {matchedFuzzyRules?.length
+                          ? matchedFuzzyRules.join(" · ")
+                          : "none"}
+                      </code>
+                    </div>
+
+                    <div className="score-breakdown">
+                      {scoreParts.map(({ key, label }) => (
+                        <div className="score-row" key={key}>
+                          <span>{label}</span>
+                          <code>{formatScorePart(diagnostics.breakdown[key])}</code>
+                        </div>
+                      ))}
+                      <div className="score-row total">
+                        <span>总分</span>
+                        <code>{diagnostics.total}</code>
+                      </div>
+                    </div>
+                  </details>
                 </article>
               ),
             )}
@@ -325,7 +381,7 @@ export default function App() {
           <div className="empty-state">
             {datasetTerms.length === 0
               ? "测试数据为空，请先添加至少一个词条。"
-              : query.trim()
+              : normalizedQuery
                 ? "没有找到匹配项，试试其他拼音、切换匹配模式或开启模糊音。"
                 : "输入拼音开始搜索。"}
           </div>
@@ -334,8 +390,8 @@ export default function App() {
 
       <footer>
         Automatic matching tries <code>every → first → start → any</code>. Custom
-        datasets stay in this browser, while fuzzy pronunciation variants remain
-        bounded, explainable, and ranking-aware.
+        datasets stay in this browser, while each result can expose the exact
+        ranking signals behind its score.
       </footer>
     </main>
   );

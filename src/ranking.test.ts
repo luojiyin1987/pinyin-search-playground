@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 const rankingModuleUrl = new URL("./ranking.ts", import.meta.url).href;
-const { calculateScore, rankResults } = await import(rankingModuleUrl);
+const { calculateScore, calculateScoreDiagnostics, rankResults } = await import(
+  rankingModuleUrl
+);
 
 test("prefers stricter match modes", () => {
   assert.ok(
@@ -58,6 +60,28 @@ test("prefers shorter text as a tie-break signal", () => {
   );
 });
 
+test("exposes the existing score as an explainable breakdown", () => {
+  const diagnostics = calculateScoreDiagnostics("中国", [0, 1], "every", 0);
+
+  assert.deepEqual(diagnostics.breakdown, {
+    mode: 400,
+    fuzzy: 0,
+    start: 100,
+    continuous: 50,
+    coverage: 20,
+    span: 28,
+    length: -2,
+  });
+  assert.equal(diagnostics.total, 596);
+  assert.equal(diagnostics.total, calculateScore("中国", [0, 1], "every", 0));
+});
+
+test("diagnostics expose the fuzzy penalty without changing its weight", () => {
+  const diagnostics = calculateScoreDiagnostics("中国", [0, 1], "every", 2);
+  assert.equal(diagnostics.breakdown.fuzzy, -240);
+  assert.equal(diagnostics.total, calculateScore("中国", [0, 1], "every", 2));
+});
+
 test("sorts results by descending relevance score", () => {
   const ranked = rankResults([
     { text: "我爱中国", indexes: [2, 3] },
@@ -69,6 +93,15 @@ test("sorts results by descending relevance score", () => {
     ranked.map(({ text }) => text),
     ["中国", "中间有国", "我爱中国"],
   );
+});
+
+test("ranked results carry diagnostics matching their score", () => {
+  const [ranked] = rankResults([
+    { text: "中国", indexes: [0, 1], matchMode: "every" },
+  ]);
+
+  assert.equal(ranked.score, ranked.diagnostics.total);
+  assert.equal(ranked.diagnostics.breakdown.mode, 400);
 });
 
 test("match mode outranks positional signals in automatic search", () => {
