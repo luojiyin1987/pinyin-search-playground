@@ -10,8 +10,24 @@ export type SearchResult = {
   fuzzyDistance?: number;
 };
 
+export type ScoreBreakdown = {
+  mode: number;
+  fuzzy: number;
+  start: number;
+  continuous: number;
+  coverage: number;
+  span: number;
+  length: number;
+};
+
+export type ScoreDiagnostics = {
+  total: number;
+  breakdown: ScoreBreakdown;
+};
+
 export type RankedSearchResult = SearchResult & {
   score: number;
+  diagnostics: ScoreDiagnostics;
 };
 
 const matchModeScores: Record<MatchPrecision, number> = {
@@ -29,39 +45,73 @@ function isContinuous(indexes: number[]) {
   );
 }
 
+export function calculateScoreDiagnostics(
+  text: string,
+  indexes: number[],
+  matchMode?: MatchPrecision,
+  fuzzyDistance = 0,
+): ScoreDiagnostics {
+  if (indexes.length === 0) {
+    return {
+      total: Number.NEGATIVE_INFINITY,
+      breakdown: {
+        mode: 0,
+        fuzzy: 0,
+        start: 0,
+        continuous: 0,
+        coverage: 0,
+        span: 0,
+        length: 0,
+      },
+    };
+  }
+
+  const startIndex = indexes[0];
+  const matchedSpan = indexes[indexes.length - 1] - startIndex + 1;
+  const breakdown: ScoreBreakdown = {
+    mode: matchMode ? matchModeScores[matchMode] : 0,
+    fuzzy: -fuzzyDistance * FUZZY_DISTANCE_PENALTY,
+    start: startIndex === 0 ? 100 : Math.max(0, 50 - startIndex * 5),
+    continuous: isContinuous(indexes) ? 50 : 0,
+    coverage: indexes.length * 10,
+    span: Math.max(0, 30 - matchedSpan),
+    length: -text.length,
+  };
+
+  const total = Object.values(breakdown).reduce((sum, value) => sum + value, 0);
+  return { total, breakdown };
+}
+
 export function calculateScore(
   text: string,
   indexes: number[],
   matchMode?: MatchPrecision,
   fuzzyDistance = 0,
 ) {
-  if (indexes.length === 0) return Number.NEGATIVE_INFINITY;
-
-  const start = indexes[0];
-  const span = indexes[indexes.length - 1] - start + 1;
-
-  let score = matchMode ? matchModeScores[matchMode] : 0;
-  score -= fuzzyDistance * FUZZY_DISTANCE_PENALTY;
-  score += start === 0 ? 100 : Math.max(0, 50 - start * 5);
-  score += isContinuous(indexes) ? 50 : 0;
-  score += indexes.length * 10;
-  score += Math.max(0, 30 - span);
-  score -= text.length;
-
-  return score;
+  return calculateScoreDiagnostics(
+    text,
+    indexes,
+    matchMode,
+    fuzzyDistance,
+  ).total;
 }
 
 export function rankResults(results: SearchResult[]): RankedSearchResult[] {
   return results
-    .map((result) => ({
-      ...result,
-      score: calculateScore(
+    .map((result) => {
+      const diagnostics = calculateScoreDiagnostics(
         result.text,
         result.indexes,
         result.matchMode,
         result.fuzzyDistance,
-      ),
-    }))
+      );
+
+      return {
+        ...result,
+        score: diagnostics.total,
+        diagnostics,
+      };
+    })
     .sort((a, b) => {
       if (a.score !== b.score) return b.score - a.score;
 
