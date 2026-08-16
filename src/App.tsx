@@ -1,5 +1,10 @@
 import { useMemo, useState } from "react";
 import { exampleQueries, sampleTerms } from "./data";
+import {
+  defaultFuzzyRuleIds,
+  fuzzyRuleDefinitions,
+  type FuzzyRuleId,
+} from "./fuzzy";
 import { rankResults } from "./ranking";
 import { findMatch, type SearchMode } from "./search";
 
@@ -44,6 +49,18 @@ export default function App() {
   const [searchMode, setSearchMode] = useState<SearchMode>("auto");
   const [continuous, setContinuous] = useState(false);
   const [useV, setUseV] = useState(true);
+  const [fuzzyEnabled, setFuzzyEnabled] = useState(false);
+  const [fuzzyRules, setFuzzyRules] = useState<FuzzyRuleId[]>(
+    defaultFuzzyRuleIds,
+  );
+
+  const toggleFuzzyRule = (rule: FuzzyRuleId) => {
+    setFuzzyRules((current) =>
+      current.includes(rule)
+        ? current.filter((item) => item !== rule)
+        : [...current, rule],
+    );
+  };
 
   const results = useMemo(() => {
     const normalizedQuery = query.trim();
@@ -53,13 +70,14 @@ export default function App() {
       const result = findMatch(text, normalizedQuery, searchMode, {
         continuous,
         v: useV,
+        fuzzyRules: fuzzyEnabled ? fuzzyRules : [],
       });
 
       return result ? [result] : [];
     });
 
     return rankResults(matchedResults);
-  }, [query, searchMode, continuous, useV]);
+  }, [query, searchMode, continuous, useV, fuzzyEnabled, fuzzyRules]);
 
   return (
     <main className="app-shell">
@@ -67,7 +85,7 @@ export default function App() {
         <div className="eyebrow">pinyin-pro · match()</div>
         <h1>中文拼音搜索 Playground</h1>
         <p>
-          输入拼音、首字母或缩写，实时查看匹配结果、命中字符、匹配模式和原文索引。
+          输入拼音、首字母或缩写，实时查看匹配结果、命中字符、匹配模式和模糊音改写。
         </p>
       </section>
 
@@ -78,7 +96,7 @@ export default function App() {
             autoFocus
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="试试 zgyh、cq、kuaiji、lvbu"
+            placeholder="试试 zgyh、zongguo、sanghai、beijin"
             spellCheck={false}
           />
         </label>
@@ -148,6 +166,46 @@ export default function App() {
             </span>
           </label>
         </div>
+
+        <fieldset className="precision-fieldset">
+          <legend>模糊音</legend>
+          <label className="toggle-option">
+            <input
+              type="checkbox"
+              checked={fuzzyEnabled}
+              onChange={(event) => setFuzzyEnabled(event.target.checked)}
+            />
+            <span>
+              <strong>开启模糊音</strong>
+              <small>原始 query 优先，模糊改写会降低 ranking score</small>
+            </span>
+          </label>
+
+          <div className="precision-grid">
+            {fuzzyRuleDefinitions.map((rule) => {
+              const checked = fuzzyRules.includes(rule.id);
+              return (
+                <label
+                  className={
+                    fuzzyEnabled && checked
+                      ? "precision-option is-active"
+                      : "precision-option"
+                  }
+                  key={rule.id}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    disabled={!fuzzyEnabled}
+                    onChange={() => toggleFuzzyRule(rule.id)}
+                  />
+                  <strong>{rule.label}</strong>
+                  <small>{checked ? "已启用" : "已关闭"}</small>
+                </label>
+              );
+            })}
+          </div>
+        </fieldset>
       </section>
 
       <section className="results-section" aria-live="polite">
@@ -161,37 +219,55 @@ export default function App() {
 
         {query.trim() && results.length > 0 ? (
           <div className="result-list">
-            {results.map(({ text, indexes, score, matchMode }) => (
-              <article className="result-card" key={text}>
-                <HighlightedText text={text} indexes={indexes} />
-                <div className="result-meta">
-                  {matchMode ? (
-                    <>
-                      <span>mode</span>
-                      <code>{matchMode}</code>
-                    </>
-                  ) : null}
-                  <span>score</span>
-                  <code>{score}</code>
-                  <span>indexes</span>
-                  <code>[{indexes.join(", ")}]</code>
-                </div>
-              </article>
-            ))}
+            {results.map(
+              ({
+                text,
+                indexes,
+                score,
+                matchMode,
+                matchedQuery,
+                fuzzyRules: matchedFuzzyRules,
+                fuzzyDistance,
+              }) => (
+                <article className="result-card" key={text}>
+                  <HighlightedText text={text} indexes={indexes} />
+                  <div className="result-meta">
+                    {matchMode ? (
+                      <>
+                        <span>mode</span>
+                        <code>{matchMode}</code>
+                      </>
+                    ) : null}
+                    {fuzzyDistance ? (
+                      <>
+                        <span>fuzzy</span>
+                        <code>{matchedFuzzyRules?.join(" · ")}</code>
+                        <span>query</span>
+                        <code>{matchedQuery}</code>
+                      </>
+                    ) : null}
+                    <span>score</span>
+                    <code>{score}</code>
+                    <span>indexes</span>
+                    <code>[{indexes.join(", ")}]</code>
+                  </div>
+                </article>
+              ),
+            )}
           </div>
         ) : (
           <div className="empty-state">
             {query.trim()
-              ? "没有找到匹配项，试试其他拼音或切换匹配模式。"
+              ? "没有找到匹配项，试试其他拼音、切换匹配模式或开启模糊音。"
               : "输入拼音开始搜索。"}
           </div>
         )}
       </section>
 
       <footer>
-        Automatic matching tries <code>every → first → start → any</code>, then
-        ranks results by match mode and positional relevance. Fuzzy pronunciation
-        rules are intentionally left for later iterations.
+        Automatic matching tries <code>every → first → start → any</code>. Fuzzy
+        pronunciation variants are bounded, explained in results, and penalized in
+        ranking so exact input remains preferred.
       </footer>
     </main>
   );
