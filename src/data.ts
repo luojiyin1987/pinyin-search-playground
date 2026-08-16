@@ -8,8 +8,21 @@ export const sampleTerms = [
   "重庆火锅",
   "厦门航空",
   "长安汽车",
+  "上海",
+  "南宁",
+  "北京",
+  "深圳",
   "会计",
   "吕布",
 ];
 
-export const exampleQueries = ["zgyh", "cq", "kuaiji", "lvbu"];
+export const exampleQueries = [
+  "zgyh",
+  "kuaiji",
+  "zongguo",
+  "congqing",
+  "sanghai",
+  "lanning",
+  "beijin",
+  "shenzheng",
+];

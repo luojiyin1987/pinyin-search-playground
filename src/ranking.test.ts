@@ -20,6 +20,20 @@ test("prefers stricter match modes", () => {
   );
 });
 
+test("penalizes fuzzy substitutions", () => {
+  assert.ok(
+    calculateScore("中国", [0, 1], "every", 0) >
+      calculateScore("中国", [0, 1], "every", 1),
+  );
+});
+
+test("an exact first-letter match outranks a one-step fuzzy exact match", () => {
+  assert.ok(
+    calculateScore("中国", [0, 1], "first", 0) >
+      calculateScore("中国", [0, 1], "every", 1),
+  );
+});
+
 test("prefers matches at the start of the text", () => {
   assert.ok(calculateScore("中国", [0, 1]) > calculateScore("我爱中国", [2, 3]));
 });

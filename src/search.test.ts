@@ -29,3 +29,32 @@ test("manual mode only uses the selected precision", () => {
   assert.equal(findMatch("中文拼音", "zhwpy", "first"), null);
   assert.ok(findMatch("中文拼音", "zhwpy", "start"));
 });
+
+test("fuzzy rules can promote a pronunciation variant to a strict match", () => {
+  const result = findMatch("中国", "zongguo", "auto", {
+    fuzzyRules: ["zh-z"],
+  });
+
+  assert.equal(result?.matchMode, "every");
+  assert.equal(result?.matchedQuery, "zhongguo");
+  assert.deepEqual(result?.fuzzyRules, ["zh-z"]);
+  assert.equal(result?.fuzzyDistance, 1);
+});
+
+test("manual strict matching can opt into fuzzy rules", () => {
+  const result = findMatch("银行", "yinghang", "every", {
+    fuzzyRules: ["in-ing"],
+  });
+
+  assert.equal(result?.matchedQuery, "yinhang");
+  assert.equal(result?.fuzzyDistance, 1);
+});
+
+test("any mode does not expand fuzzy variants", () => {
+  const withoutFuzzy = findMatch("中国", "zongguo", "any");
+  const withFuzzy = findMatch("中国", "zongguo", "any", {
+    fuzzyRules: ["zh-z"],
+  });
+
+  assert.deepEqual(withFuzzy, withoutFuzzy);
+});
