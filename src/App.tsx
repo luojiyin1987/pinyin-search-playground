@@ -1,5 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { exampleQueries, sampleTerms } from "./data";
+import {
+  DATASET_STORAGE_KEY,
+  parseDataset,
+  serializeDataset,
+} from "./dataset";
+import "./dataset.css";
 import {
   defaultFuzzyRuleIds,
   fuzzyRuleDefinitions,
@@ -7,6 +13,8 @@ import {
 } from "./fuzzy";
 import { rankResults } from "./ranking";
 import { findMatch, type SearchMode } from "./search";
+
+const defaultDatasetText = serializeDataset(sampleTerms);
 
 const searchModeOptions: Array<{
   value: SearchMode;
@@ -19,6 +27,16 @@ const searchModeOptions: Array<{
   { value: "start", label: "前缀", description: "拼音前缀" },
   { value: "any", label: "任意", description: "更宽松匹配" },
 ];
+
+function readStoredDataset() {
+  if (typeof window === "undefined") return defaultDatasetText;
+
+  try {
+    return window.localStorage.getItem(DATASET_STORAGE_KEY) ?? defaultDatasetText;
+  } catch {
+    return defaultDatasetText;
+  }
+}
 
 function HighlightedText({ text, indexes }: { text: string; indexes: number[] }) {
   const matchedIndexes = new Set(indexes);
@@ -46,6 +64,7 @@ function HighlightedText({ text, indexes }: { text: string; indexes: number[] })
 
 export default function App() {
   const [query, setQuery] = useState("zgyh");
+  const [datasetText, setDatasetText] = useState(readStoredDataset);
   const [searchMode, setSearchMode] = useState<SearchMode>("auto");
   const [continuous, setContinuous] = useState(false);
   const [useV, setUseV] = useState(true);
@@ -53,6 +72,16 @@ export default function App() {
   const [fuzzyRules, setFuzzyRules] = useState<FuzzyRuleId[]>(
     defaultFuzzyRuleIds,
   );
+
+  const datasetTerms = useMemo(() => parseDataset(datasetText), [datasetText]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(DATASET_STORAGE_KEY, datasetText);
+    } catch {
+      // The playground remains usable when browser storage is unavailable.
+    }
+  }, [datasetText]);
 
   const toggleFuzzyRule = (rule: FuzzyRuleId) => {
     setFuzzyRules((current) =>
@@ -66,7 +95,7 @@ export default function App() {
     const normalizedQuery = query.trim();
     if (!normalizedQuery) return [];
 
-    const matchedResults = sampleTerms.flatMap((text) => {
+    const matchedResults = datasetTerms.flatMap((text) => {
       const result = findMatch(text, normalizedQuery, searchMode, {
         continuous,
         v: useV,
@@ -77,7 +106,15 @@ export default function App() {
     });
 
     return rankResults(matchedResults);
-  }, [query, searchMode, continuous, useV, fuzzyEnabled, fuzzyRules]);
+  }, [
+    query,
+    datasetTerms,
+    searchMode,
+    continuous,
+    useV,
+    fuzzyEnabled,
+    fuzzyRules,
+  ]);
 
   return (
     <main className="app-shell">
@@ -114,6 +151,35 @@ export default function App() {
             </button>
           ))}
         </div>
+
+        <section className="dataset-editor" aria-labelledby="dataset-title">
+          <div className="dataset-header">
+            <div>
+              <strong id="dataset-title">测试数据</strong>
+              <small>{datasetTerms.length} 条有效词条</small>
+            </div>
+            <button
+              type="button"
+              className="example-button"
+              onClick={() => setDatasetText(defaultDatasetText)}
+              disabled={datasetText === defaultDatasetText}
+            >
+              恢复示例数据
+            </button>
+          </div>
+
+          <textarea
+            value={datasetText}
+            onChange={(event) => setDatasetText(event.target.value)}
+            rows={8}
+            spellCheck={false}
+            aria-describedby="dataset-help"
+            placeholder="一行一个中文词条"
+          />
+          <small id="dataset-help" className="dataset-help">
+            一行一个词条；空行和重复项会自动忽略。内容只保存在当前浏览器的 localStorage 中。
+          </small>
+        </section>
 
         <fieldset className="precision-fieldset">
           <legend>匹配模式</legend>
@@ -257,17 +323,19 @@ export default function App() {
           </div>
         ) : (
           <div className="empty-state">
-            {query.trim()
-              ? "没有找到匹配项，试试其他拼音、切换匹配模式或开启模糊音。"
-              : "输入拼音开始搜索。"}
+            {datasetTerms.length === 0
+              ? "测试数据为空，请先添加至少一个词条。"
+              : query.trim()
+                ? "没有找到匹配项，试试其他拼音、切换匹配模式或开启模糊音。"
+                : "输入拼音开始搜索。"}
           </div>
         )}
       </section>
 
       <footer>
-        Automatic matching tries <code>every → first → start → any</code>. Fuzzy
-        pronunciation variants are bounded, explained in results, and penalized in
-        ranking so exact input remains preferred.
+        Automatic matching tries <code>every → first → start → any</code>. Custom
+        datasets stay in this browser, while fuzzy pronunciation variants remain
+        bounded, explainable, and ranking-aware.
       </footer>
     </main>
   );
