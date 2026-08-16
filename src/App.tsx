@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { match } from "pinyin-pro";
 import { exampleQueries, sampleTerms } from "./data";
+import { rankResults } from "./ranking";
 
 type Precision = "first" | "start" | "every" | "any";
 
@@ -49,7 +50,7 @@ export default function App() {
     const normalizedQuery = query.trim();
     if (!normalizedQuery) return [];
 
-    return sampleTerms.flatMap((text) => {
+    const matchedResults = sampleTerms.flatMap((text) => {
       const indexes = match(text, normalizedQuery, {
         precision,
         continuous,
@@ -58,6 +59,8 @@ export default function App() {
 
       return indexes ? [{ text, indexes }] : [];
     });
+
+    return rankResults(matchedResults);
   }, [query, precision, continuous, useV]);
 
   return (
@@ -160,10 +163,12 @@ export default function App() {
 
         {query.trim() && results.length > 0 ? (
           <div className="result-list">
-            {results.map(({ text, indexes }) => (
+            {results.map(({ text, indexes, score }) => (
               <article className="result-card" key={text}>
                 <HighlightedText text={text} indexes={indexes} />
                 <div className="result-meta">
+                  <span>score</span>
+                  <code>{score}</code>
                   <span>indexes</span>
                   <code>[{indexes.join(", ")}]</code>
                 </div>
@@ -180,8 +185,8 @@ export default function App() {
       </section>
 
       <footer>
-        Matching powered by <code>pinyin-pro</code>. Fuzzy pronunciation rules and
-        ranking are intentionally left for later iterations.
+        Matching and ranking powered by <code>pinyin-pro</code> results. Fuzzy
+        pronunciation rules are intentionally left for later iterations.
       </footer>
     </main>
   );
