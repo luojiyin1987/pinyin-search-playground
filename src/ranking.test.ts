@@ -5,6 +5,21 @@ import test from "node:test";
 const rankingModuleUrl = new URL("./ranking.ts", import.meta.url).href;
 const { calculateScore, rankResults } = await import(rankingModuleUrl);
 
+test("prefers stricter match modes", () => {
+  assert.ok(
+    calculateScore("中国", [0, 1], "every") >
+      calculateScore("中国", [0, 1], "first"),
+  );
+  assert.ok(
+    calculateScore("中国", [0, 1], "first") >
+      calculateScore("中国", [0, 1], "start"),
+  );
+  assert.ok(
+    calculateScore("中国", [0, 1], "start") >
+      calculateScore("中国", [0, 1], "any"),
+  );
+});
+
 test("prefers matches at the start of the text", () => {
   assert.ok(calculateScore("中国", [0, 1]) > calculateScore("我爱中国", [2, 3]));
 });
@@ -40,4 +55,13 @@ test("sorts results by descending relevance score", () => {
     ranked.map(({ text }) => text),
     ["中国", "中间有国", "我爱中国"],
   );
+});
+
+test("match mode outranks positional signals in automatic search", () => {
+  const ranked = rankResults([
+    { text: "甲中国", indexes: [1, 2], matchMode: "every" },
+    { text: "中国", indexes: [0, 1], matchMode: "any" },
+  ]);
+
+  assert.equal(ranked[0].matchMode, "every");
 });
