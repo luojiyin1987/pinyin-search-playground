@@ -1,10 +1,20 @@
+import type { MatchPrecision } from "./search";
+
 export type SearchResult = {
   text: string;
   indexes: number[];
+  matchMode?: MatchPrecision;
 };
 
 export type RankedSearchResult = SearchResult & {
   score: number;
+};
+
+const matchModeScores: Record<MatchPrecision, number> = {
+  every: 400,
+  first: 300,
+  start: 200,
+  any: 100,
 };
 
 function isContinuous(indexes: number[]) {
@@ -13,13 +23,17 @@ function isContinuous(indexes: number[]) {
   );
 }
 
-export function calculateScore(text: string, indexes: number[]) {
+export function calculateScore(
+  text: string,
+  indexes: number[],
+  matchMode?: MatchPrecision,
+) {
   if (indexes.length === 0) return Number.NEGATIVE_INFINITY;
 
   const start = indexes[0];
   const span = indexes[indexes.length - 1] - start + 1;
 
-  let score = 0;
+  let score = matchMode ? matchModeScores[matchMode] : 0;
   score += start === 0 ? 100 : Math.max(0, 50 - start * 5);
   score += isContinuous(indexes) ? 50 : 0;
   score += indexes.length * 10;
@@ -33,7 +47,7 @@ export function rankResults(results: SearchResult[]): RankedSearchResult[] {
   return results
     .map((result) => ({
       ...result,
-      score: calculateScore(result.text, result.indexes),
+      score: calculateScore(result.text, result.indexes, result.matchMode),
     }))
     .sort((a, b) => {
       if (a.score !== b.score) return b.score - a.score;

@@ -1,18 +1,17 @@
 import { useMemo, useState } from "react";
-import { match } from "pinyin-pro";
 import { exampleQueries, sampleTerms } from "./data";
 import { rankResults } from "./ranking";
+import { findMatch, type SearchMode } from "./search";
 
-type Precision = "first" | "start" | "every" | "any";
-
-const precisionOptions: Array<{
-  value: Precision;
+const searchModeOptions: Array<{
+  value: SearchMode;
   label: string;
   description: string;
 }> = [
+  { value: "auto", label: "自动", description: "严格到宽松" },
+  { value: "every", label: "完整", description: "完整拼音" },
   { value: "first", label: "首字母", description: "首字母或全拼" },
   { value: "start", label: "前缀", description: "拼音前缀" },
-  { value: "every", label: "完整", description: "完整拼音" },
   { value: "any", label: "任意", description: "更宽松匹配" },
 ];
 
@@ -42,7 +41,7 @@ function HighlightedText({ text, indexes }: { text: string; indexes: number[] })
 
 export default function App() {
   const [query, setQuery] = useState("zgyh");
-  const [precision, setPrecision] = useState<Precision>("first");
+  const [searchMode, setSearchMode] = useState<SearchMode>("auto");
   const [continuous, setContinuous] = useState(false);
   const [useV, setUseV] = useState(true);
 
@@ -51,17 +50,16 @@ export default function App() {
     if (!normalizedQuery) return [];
 
     const matchedResults = sampleTerms.flatMap((text) => {
-      const indexes = match(text, normalizedQuery, {
-        precision,
+      const result = findMatch(text, normalizedQuery, searchMode, {
         continuous,
         v: useV,
       });
 
-      return indexes ? [{ text, indexes }] : [];
+      return result ? [result] : [];
     });
 
     return rankResults(matchedResults);
-  }, [query, precision, continuous, useV]);
+  }, [query, searchMode, continuous, useV]);
 
   return (
     <main className="app-shell">
@@ -69,7 +67,7 @@ export default function App() {
         <div className="eyebrow">pinyin-pro · match()</div>
         <h1>中文拼音搜索 Playground</h1>
         <p>
-          输入拼音、首字母或缩写，实时查看匹配结果、命中字符和原文索引。
+          输入拼音、首字母或缩写，实时查看匹配结果、命中字符、匹配模式和原文索引。
         </p>
       </section>
 
@@ -102,10 +100,10 @@ export default function App() {
         <fieldset className="precision-fieldset">
           <legend>匹配模式</legend>
           <div className="precision-grid">
-            {precisionOptions.map((option) => (
+            {searchModeOptions.map((option) => (
               <label
                 className={
-                  precision === option.value
+                  searchMode === option.value
                     ? "precision-option is-active"
                     : "precision-option"
                 }
@@ -113,10 +111,10 @@ export default function App() {
               >
                 <input
                   type="radio"
-                  name="precision"
+                  name="search-mode"
                   value={option.value}
-                  checked={precision === option.value}
-                  onChange={() => setPrecision(option.value)}
+                  checked={searchMode === option.value}
+                  onChange={() => setSearchMode(option.value)}
                 />
                 <strong>{option.label}</strong>
                 <small>{option.description}</small>
@@ -163,10 +161,16 @@ export default function App() {
 
         {query.trim() && results.length > 0 ? (
           <div className="result-list">
-            {results.map(({ text, indexes, score }) => (
+            {results.map(({ text, indexes, score, matchMode }) => (
               <article className="result-card" key={text}>
                 <HighlightedText text={text} indexes={indexes} />
                 <div className="result-meta">
+                  {matchMode ? (
+                    <>
+                      <span>mode</span>
+                      <code>{matchMode}</code>
+                    </>
+                  ) : null}
                   <span>score</span>
                   <code>{score}</code>
                   <span>indexes</span>
@@ -185,8 +189,9 @@ export default function App() {
       </section>
 
       <footer>
-        Matching and ranking powered by <code>pinyin-pro</code> results. Fuzzy
-        pronunciation rules are intentionally left for later iterations.
+        Automatic matching tries <code>every → first → start → any</code>, then
+        ranks results by match mode and positional relevance. Fuzzy pronunciation
+        rules are intentionally left for later iterations.
       </footer>
     </main>
   );
