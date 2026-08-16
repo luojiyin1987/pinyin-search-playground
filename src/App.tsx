@@ -13,6 +13,13 @@ import {
   type FuzzyRuleId,
 } from "./fuzzy";
 import { rankResults, type ScoreBreakdown } from "./ranking";
+import {
+  buildShareableSearchUrl,
+  defaultShareableSearchState,
+  parseShareableSearchState,
+  type ShareableSearchState,
+} from "./share-state";
+import "./share-state.css";
 import { findMatch, type SearchMode } from "./search";
 
 const defaultDatasetText = serializeDataset(sampleTerms);
@@ -52,6 +59,11 @@ function readStoredDataset() {
   }
 }
 
+function readInitialSearchState() {
+  if (typeof window === "undefined") return defaultShareableSearchState;
+  return parseShareableSearchState(window.location.search);
+}
+
 function formatScorePart(value: number) {
   return value > 0 ? `+${value}` : String(value);
 }
@@ -81,17 +93,36 @@ function HighlightedText({ text, indexes }: { text: string; indexes: number[] })
 }
 
 export default function App() {
-  const [query, setQuery] = useState("zgyh");
+  const [initialSearchState] = useState(readInitialSearchState);
+  const [query, setQuery] = useState(initialSearchState.query);
   const [datasetText, setDatasetText] = useState(readStoredDataset);
-  const [searchMode, setSearchMode] = useState<SearchMode>("auto");
-  const [continuous, setContinuous] = useState(false);
-  const [useV, setUseV] = useState(true);
-  const [fuzzyEnabled, setFuzzyEnabled] = useState(false);
-  const [fuzzyRules, setFuzzyRules] = useState<FuzzyRuleId[]>(
-    defaultFuzzyRuleIds,
+  const [searchMode, setSearchMode] = useState<SearchMode>(
+    initialSearchState.searchMode,
   );
+  const [continuous, setContinuous] = useState(initialSearchState.continuous);
+  const [useV, setUseV] = useState(initialSearchState.useV);
+  const [fuzzyEnabled, setFuzzyEnabled] = useState(
+    initialSearchState.fuzzyEnabled,
+  );
+  const [fuzzyRules, setFuzzyRules] = useState<FuzzyRuleId[]>(
+    initialSearchState.fuzzyRules,
+  );
+  const [shareStatus, setShareStatus] = useState<
+    "idle" | "copied" | "failed"
+  >("idle");
 
   const datasetTerms = useMemo(() => parseDataset(datasetText), [datasetText]);
+  const shareableSearchState = useMemo<ShareableSearchState>(
+    () => ({
+      query,
+      searchMode,
+      continuous,
+      useV,
+      fuzzyEnabled,
+      fuzzyRules,
+    }),
+    [query, searchMode, continuous, useV, fuzzyEnabled, fuzzyRules],
+  );
 
   useEffect(() => {
     try {
@@ -101,12 +132,41 @@ export default function App() {
     }
   }, [datasetText]);
 
+  useEffect(() => {
+    const shareUrl = buildShareableSearchUrl(
+      window.location.href,
+      shareableSearchState,
+    );
+    const url = new URL(shareUrl);
+
+    window.history.replaceState(
+      null,
+      "",
+      `${url.pathname}${url.search}${url.hash}`,
+    );
+    setShareStatus("idle");
+  }, [shareableSearchState]);
+
   const toggleFuzzyRule = (rule: FuzzyRuleId) => {
     setFuzzyRules((current) =>
       current.includes(rule)
         ? current.filter((item) => item !== rule)
         : [...current, rule],
     );
+  };
+
+  const copyShareLink = async () => {
+    try {
+      if (!navigator.clipboard) throw new Error("Clipboard API unavailable");
+      const shareUrl = buildShareableSearchUrl(
+        window.location.href,
+        shareableSearchState,
+      );
+      await navigator.clipboard.writeText(shareUrl);
+      setShareStatus("copied");
+    } catch {
+      setShareStatus("failed");
+    }
   };
 
   const results = useMemo(() => {
@@ -170,6 +230,23 @@ export default function App() {
               {example}
             </button>
           ))}
+        </div>
+
+        <div className="share-controls">
+          <small>
+            当前搜索设置会同步到 URL；自定义测试数据不会包含在分享链接中。
+          </small>
+          <button
+            type="button"
+            className="example-button share-button"
+            onClick={copyShareLink}
+          >
+            {shareStatus === "copied"
+              ? "已复制"
+              : shareStatus === "failed"
+                ? "复制失败"
+                : "复制分享链接"}
+          </button>
         </div>
 
         <section className="dataset-editor" aria-labelledby="dataset-title">
@@ -389,9 +466,9 @@ export default function App() {
       </section>
 
       <footer>
-        Automatic matching tries <code>every → first → start → any</code>. Custom
-        datasets stay in this browser, while each result can expose the exact
-        ranking signals behind its score.
+        Automatic matching tries <code>every → first → start → any</code>. Search
+        settings can be shared through the URL without exposing the custom dataset,
+        while each result can expose the exact ranking signals behind its score.
       </footer>
     </main>
   );

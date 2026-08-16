@@ -1,0 +1,32 @@
+.share-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 14px;
+  border: 1px solid #e7e9f3;
+  border-radius: 14px;
+  background: #f8f9ff;
+  padding: 12px 14px;
+}
+
+.share-controls small {
+  color: #7f8798;
+  line-height: 1.55;
+}
+
+.share-button {
+  flex: 0 0 auto;
+  min-width: 104px;
+}
+
+@media (max-width: 680px) {
+  .share-controls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .share-button {
+    width: 100%;
+  }
+}
